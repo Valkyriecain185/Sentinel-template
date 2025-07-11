@@ -3,94 +3,106 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 
-// Debug environment variables
-console.log('🔍 Checking environment variables...');
-console.log('DISCORD_TOKEN:', process.env.DISCORD_TOKEN ? '✅ Set' : '❌ Missing');
-console.log('CLIENT_ID:', process.env.CLIENT_ID ? '✅ Set' : '❌ Missing');
-console.log('GUILD_ID:', process.env.GUILD_ID ? '✅ Set' : '❌ Missing');
+console.log('🚀 Command Deployment Script');
+console.log('===================================');
 
-if (!process.env.DISCORD_TOKEN || !process.env.CLIENT_ID) {
-    console.error('❌ Missing required environment variables. Please check your .env file.');
-    process.exit(1);
-}
-
+// Load commands from the correct path
 const commands = [];
-const commandsPath = path.join(__dirname, '..', 'commands');
 
-console.log(`📁 Looking for commands in: ${commandsPath}`);
+// Try multiple possible paths to find commands
+const possiblePaths = [
+    path.join(__dirname, 'src', 'commands'),
+    path.join(__dirname, '..', 'src', 'commands'),
+    path.join(process.cwd(), 'src', 'commands'),
+    path.join(__dirname, 'commands')
+];
 
-if (fs.existsSync(commandsPath)) {
-    const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-    console.log(`📄 Found ${commandFiles.length} command files: ${commandFiles.join(', ')}`);
-    
-    for (const file of commandFiles) {
-        const filePath = path.join(commandsPath, file);
-        console.log(`📥 Loading command: ${file}`);
-        
-        try {
-            const command = require(filePath);
-            
-            if ('data' in command && 'execute' in command) {
-                commands.push(command.data.toJSON());
-                console.log(`✅ Successfully loaded: ${command.data.name}`);
-            } else {
-                console.log(`⚠️  Command at ${filePath} is missing required "data" or "execute" property.`);
-            }
-        } catch (error) {
-            console.error(`❌ Error loading command ${file}:`, error.message);
-        }
+let commandsPath = null;
+
+for (const testPath of possiblePaths) {
+    console.log(`🔍 Checking: ${testPath}`);
+    if (fs.existsSync(testPath)) {
+        commandsPath = testPath;
+        console.log(`✅ Found commands directory: ${testPath}`);
+        break;
     }
-} else {
-    console.error(`❌ Commands directory does not exist: ${commandsPath}`);
+}
+
+if (!commandsPath) {
+    console.error('❌ Could not find commands directory!');
+    console.log('📁 Tried these paths:');
+    possiblePaths.forEach(p => console.log(`   - ${p}`));
     process.exit(1);
 }
 
-console.log(`📦 Total commands to deploy: ${commands.length}`);
+// Load command files
+const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+console.log(`📄 Found ${commandFiles.length} command files: ${commandFiles.join(', ')}`);
+
+for (const file of commandFiles) {
+    const filePath = path.join(commandsPath, file);
+    console.log(`📥 Loading: ${file}`);
+    
+    try {
+        // Clear require cache to ensure fresh load
+        delete require.cache[require.resolve(filePath)];
+        const command = require(filePath);
+        
+        if ('data' in command && 'execute' in command) {
+            commands.push(command.data.toJSON());
+            console.log(`✅ Loaded: ${command.data.name} - ${command.data.description}`);
+        } else {
+            console.log(`⚠️  ${file} missing data or execute property`);
+        }
+    } catch (error) {
+        console.error(`❌ Error loading ${file}:`, error.message);
+    }
+}
 
 if (commands.length === 0) {
-    console.error('❌ No commands to deploy!');
+    console.error('❌ No valid commands found!');
     process.exit(1);
 }
 
+console.log(`\n📦 Ready to deploy ${commands.length} commands`);
+
+// Deploy commands
 const rest = new REST().setToken(process.env.DISCORD_TOKEN);
 
 (async () => {
     try {
-        console.log(`🔄 Started refreshing ${commands.length} application (/) commands.`);
+        console.log('🔄 Starting deployment...');
         
-        // Choose deployment method
-        let route;
-        if (process.env.GUILD_ID) {
-            console.log('📍 Deploying to specific guild (faster for testing)');
-            route = Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID);
-        } else {
-            console.log('🌍 Deploying globally (takes up to 1 hour)');
-            route = Routes.applicationCommands(process.env.CLIENT_ID);
-        }
+        // Clear existing commands first
+        console.log('🧹 Clearing existing commands...');
+        await rest.put(
+            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+            { body: [] }
+        );
+        console.log('✅ Cleared existing commands');
         
-        const data = await rest.put(route, { body: commands });
+        // Deploy new commands
+        console.log('📤 Deploying new commands...');
+        const data = await rest.put(
+            Routes.applicationGuildCommands(process.env.CLIENT_ID, process.env.GUILD_ID),
+            { body: commands }
+        );
         
-        console.log(`✅ Successfully reloaded ${data.length} application (/) commands.`);
+        console.log(`\n🎉 SUCCESS! Deployed ${data.length} commands:`);
+        data.forEach(cmd => {
+            console.log(`   /${cmd.name} - ${cmd.description}`);
+        });
         
-        if (process.env.GUILD_ID) {
-            console.log('💡 Commands should appear immediately in your test server!');
-        } else {
-            console.log('⏰ Global commands may take up to 1 hour to appear.');
-        }
+        console.log('\n💡 Commands should appear immediately in Discord!');
+        console.log('   Try typing "/" in your server to see them');
         
     } catch (error) {
-        console.error('❌ Error deploying commands:');
+        console.error('\n❌ Deployment failed:');
+        console.error('Code:', error.code);
+        console.error('Message:', error.message);
         
-        if (error.code === 50001) {
-            console.error('   Missing Access - Check if your bot is in the server and has proper permissions');
-        } else if (error.code === 50035) {
-            console.error('   Invalid Form Body - Check your command data structure');
-        } else if (error.rawError) {
-            console.error('   Raw Error:', error.rawError);
-        } else {
-            console.error('   Error:', error.message);
+        if (error.rawError && error.rawError.errors) {
+            console.error('Details:', JSON.stringify(error.rawError.errors, null, 2));
         }
-        
-        process.exit(1);
     }
 })();

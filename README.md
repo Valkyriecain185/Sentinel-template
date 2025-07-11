@@ -1,4 +1,4 @@
-# Sentinel Discord Bot Template
+# Discord Bot Template
 
 A clean, modern Discord bot template built with Discord.js v14.
 
@@ -36,10 +36,11 @@ discord-bot-template/
    - Copy `.env` and fill in your bot credentials
    - Get your bot token from [Discord Developer Portal](https://discord.com/developers/applications)
 
-3. **Deploy commands:**
+3. **Deploy commands to Discord:**
    ```bash
-   node src/utils/deployCommands.js
+   node deployWorking.js
    ```
+   ⚠️ **Important**: You must run this BEFORE starting your bot!
 
 4. **Start the bot:**
    ```bash
@@ -50,6 +51,33 @@ discord-bot-template/
    ```bash
    npm run dev
    ```
+
+## 🔄 Workflow
+
+**The correct order is:**
+1. Write your commands in `src/commands/`
+2. Deploy them to Discord: `node deployWorking.js`
+3. Start your bot: `npm start`
+4. Commands will now work in Discord!
+
+**When you add new commands:**
+1. Create the command file
+2. Run `node deployWorking.js` again
+3. Restart your bot (`npm start`)
+
+## 🛠️ Troubleshooting
+
+**Commands not showing in Discord?**
+- Make sure you ran `node deployWorking.js` first
+- Check that your bot has proper permissions in the server
+- Try `node diagnostic.js` to check your setup
+
+**Bot starts but commands don't work?**
+- Run the deployment script: `node deployWorking.js`
+- Restart your bot after deploying
+
+**Still having issues?**
+- Run `node diagnostic.js` for a full system check
 
 ## 🔧 Configuration
 
